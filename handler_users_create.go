@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
+
+	"github.com/enkaysi/Chirpy/internal/auth"
+	"github.com/enkaysi/Chirpy/internal/database"
 
 	"github.com/google/uuid"
 )
@@ -19,28 +21,38 @@ type User struct {
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	type parameters struct {
-		Email string `json:"email"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, http.StatusInternalServerError, "Unable to decode parameters", err)
 		return
 	}
 
-	dat, err := cfg.db.CreateUser(r.Context(), params.Email)
+	hash, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash password", err)
+		return
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: hash,
+	})
+
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to create user", err)
 		return
 	}
 
 	respondWithJSON(w, http.StatusCreated, User{
-		ID:        dat.ID,
-		CreatedAt: dat.CreatedAt,
-		UpdatedAt: dat.UpdatedAt,
-		Email:     dat.Email,
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
 	})
 }
